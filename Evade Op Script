@@ -1,220 +1,258 @@
--- Auto reload via TeleportData
-local Players = game:GetService("Players")
-local TeleportData = Players.LocalPlayer:FindFirstChild("TeleportData")
-if TeleportData and TeleportData:IsA("StringValue") then
-    loadstring(game:HttpGet(TeleportData.Value))()
-    return
-end
-
 local Lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/modern"))()
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
-local HttpService = game:GetService("HttpService")
+local Lighting = game:GetService("Lighting")
+local UIS = game:GetService("UserInputService")
 local TeleportService = game:GetService("TeleportService")
 local LocalPlayer = Players.LocalPlayer
 
 local autoTab = Lib:Tab("Auto")
 local visualTab = Lib:Tab("Visual")
 local miscTab = Lib:Tab("Misc")
-
--- Server Hop
-miscTab:Button("Server Hop", function()
-    local function getServer()
-        local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
-        local success, result = pcall(function()
-            return HttpService:JSONDecode(game:HttpGet(url)).data
-        end)
-        if success then
-            for _, server in ipairs(result) do
-                if server.playing < server.maxPlayers and server.id ~= game.JobId then
-                    return server.id
-                end
-            end
-        end
-        return nil
-    end
-
-    local serverId = getServer()
-    if serverId then
-        local teleportData = Instance.new("StringValue")
-        teleportData.Name = "TeleportData"
-        teleportData.Value = "https://raw.githubusercontent.com/breakneckv099/Evade-Op-BandzHub/refs/heads/main/Evade%20Op%20Script"
-        teleportData.Parent = LocalPlayer
-
-        TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, LocalPlayer)
-    end
-end)
-
--- FullBright
-local lighting = game:GetService("Lighting")
-local fullBrightEnabled = false
-local originalBrightness, originalAmbient, originalOutdoorAmbient = lighting.Brightness, lighting.Ambient, lighting.OutdoorAmbient
-
-miscTab:Toggle("FullBright", function(state)
-    fullBrightEnabled = state
-    if state then
-        lighting.Brightness = 2
-        lighting.Ambient = Color3.new(1, 1, 1)
-        lighting.OutdoorAmbient = Color3.new(1, 1, 1)
-    else
-        lighting.Brightness = originalBrightness
-        lighting.Ambient = originalAmbient
-        lighting.OutdoorAmbient = originalOutdoorAmbient
-    end
-end)
-
--- FPS Boost
-miscTab:Toggle("FPS Boost", function(state)
-    if state then
-        for _, obj in pairs(Workspace:GetDescendants()) do
-            if obj:IsA("Texture") or obj:IsA("Decal") then
-                obj:Destroy()
-            elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
-                obj.Enabled = false
-            elseif obj:IsA("BasePart") and obj.Material ~= Enum.Material.SmoothPlastic then
-                obj.Material = Enum.Material.SmoothPlastic
-            end
-        end
-    end
-end)
-
--- Anti-AFK
-local antiAFK = false
-miscTab:Toggle("Anti-AFK", function(state)
-    antiAFK = state
-    while antiAFK do
-        task.wait(30)
-        local virtualInput = game:GetService("VirtualInputManager")
-        virtualInput:SendKeyEvent(true, Enum.KeyCode.W, false, game)
-        task.wait(0.1)
-        virtualInput:SendKeyEvent(false, Enum.KeyCode.W, false, game)
-        virtualInput:SendKeyEvent(true, Enum.KeyCode.A, false, game)
-        task.wait(0.1)
-        virtualInput:SendKeyEvent(false, Enum.KeyCode.A, false, game)
-        virtualInput:SendKeyEvent(true, Enum.KeyCode.S, false, game)
-        task.wait(0.1)
-        virtualInput:SendKeyEvent(false, Enum.KeyCode.S, false, game)
-        virtualInput:SendKeyEvent(true, Enum.KeyCode.D, false, game)
-        task.wait(0.1)
-        virtualInput:SendKeyEvent(false, Enum.KeyCode.D, false, game)
-
-        virtualInput:SendMouseButtonEvent(500, 500, 0, true, game, 0)
-        virtualInput:SendMouseButtonEvent(500, 500, 0, false, game, 0)
-        virtualInput:SendMouseButtonEvent(500, 500, 1, true, game, 0)
-        virtualInput:SendMouseButtonEvent(500, 500, 1, false, game, 0)
-    end
-end)
+local playerTab = Lib:Tab("Player")
 
 -- Auto Escape
-local autoEscape = false
-local escapeCooldown = false
-local lastPlatform = nil
-local originalCFrame = nil
+local escapeToggle = false
+local escapePlatform
+local originalCFrame
+local returned = true
 
-local function createSkyPlatform()
-    if lastPlatform then lastPlatform:Destroy() end
-    local part = Instance.new("Part")
-    part.Name = "SafePlatform"
-    part.Size = Vector3.new(200, 1, 200)
-    part.Anchored = true
-    part.CanCollide = true
-    part.Position = Vector3.new(0, 400, 0)
-    part.Parent = Workspace
-    lastPlatform = part
-    return part
+local function createEscapePlatform()
+	local platform = Instance.new("Part")
+	platform.Name = "SafePlatform"
+	platform.Size = Vector3.new(100, 1, 100)
+	platform.Anchored = true
+	platform.CanCollide = true
+	platform.Position = Vector3.new(0, 400, 0)
+	platform.BrickColor = BrickColor.new("Bright blue")
+	platform.Parent = Workspace
+	return platform
 end
 
 autoTab:Toggle("Auto Escape", function(state)
-    autoEscape = state
-    if state then
-        createSkyPlatform()
-        task.spawn(function()
-            while autoEscape do
-                task.wait(10)
-                createSkyPlatform()
-            end
-        end)
-
-        task.spawn(function()
-            while autoEscape do
-                task.wait(0.2)
-                if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then continue end
-                local charHRP = LocalPlayer.Character.HumanoidRootPart
-
-                for _, ent in pairs(Workspace.Game.Players:GetChildren()) do
-                    if ent:FindFirstChild("HumanoidRootPart") then
-                        local name = ent.Name
-                        if ReplicatedStorage.NPCs:FindFirstChild(name) then
-                            local dist = (ent.HumanoidRootPart.Position - charHRP.Position).Magnitude
-                            if dist < 15 and not escapeCooldown then
-                                escapeCooldown = true
-                                originalCFrame = charHRP.CFrame
-                                charHRP.CFrame = CFrame.new(lastPlatform.Position + Vector3.new(0, 5, 0))
-                                task.delay(5, function()
-                                    if autoEscape and originalCFrame then
-                                        charHRP.CFrame = originalCFrame
-                                    end
-                                    escapeCooldown = false
-                                end)
-                            end
-                        end
-                    end
-                end
-            end
-        end)
-    end
+	escapeToggle = state
+	if state and not escapePlatform then
+		escapePlatform = createEscapePlatform()
+	end
 end)
 
--- ESP
-local function createBoxESP(model, color)
-    if not model:FindFirstChild("HumanoidRootPart") then return end
-    local box = Instance.new("BoxHandleAdornment")
-    box.Name = "ESP_Box"
-    box.Adornee = model.HumanoidRootPart
-    box.Size = model.HumanoidRootPart.Size + Vector3.new(1.5, 1.5, 1.5)
-    box.AlwaysOnTop = true
-    box.ZIndex = 2
-    box.Color3 = color
-    box.Transparency = 0.65
-    box.Parent = model
+-- Recreate platform every 10s
+task.spawn(function()
+	while task.wait(10) do
+		if escapeToggle then
+			if not escapePlatform or not escapePlatform.Parent then
+				escapePlatform = createEscapePlatform()
+			end
+		end
+	end
+end)
+
+-- Escape logic
+task.spawn(function()
+	while task.wait(0.3) do
+		if escapeToggle and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+			local char = LocalPlayer.Character
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+
+			local closest = nil
+			local closestDist = math.huge
+
+			for _, entity in pairs(Workspace.Game.Players:GetChildren()) do
+				if entity:FindFirstChild("HumanoidRootPart") and ReplicatedStorage.NPCs:FindFirstChild(entity.Name) then
+					local dist = (entity.HumanoidRootPart.Position - hrp.Position).Magnitude
+					if dist < closestDist then
+						closest = entity
+						closestDist = dist
+					end
+				end
+			end
+
+			if closest and closestDist < 21.5 and returned then
+				if not escapePlatform or not escapePlatform.Parent then
+					escapePlatform = createEscapePlatform()
+				end
+				originalCFrame = hrp.CFrame
+				char:PivotTo(CFrame.new(escapePlatform.Position + Vector3.new(0, 5, 0)))
+				returned = false
+			elseif closest and closestDist > 35 and not returned then
+				task.wait(5)
+				if LocalPlayer.Character then
+					LocalPlayer.Character:PivotTo(originalCFrame)
+				end
+				returned = true
+			end
+		end
+	end
+end)
+
+-- Box ESP
+local playerBoxes = {}
+local nextbotBoxes = {}
+local playerESPOn = false
+local nextbotESPOn = false
+
+local function addBoxESP(part, color)
+	local box = Instance.new("BoxHandleAdornment")
+	box.Name = "ESPBox"
+	box.Size = part.Size + Vector3.new(1.5, 1.5, 1.5)
+	box.Adornee = part
+	box.AlwaysOnTop = true
+	box.ZIndex = 0
+	box.Color3 = color
+	box.Transparency = 0.4
+	box.Parent = part
+	return box
 end
 
-local function clearESP()
-    for _, obj in pairs(Workspace:GetDescendants()) do
-        if obj:IsA("BoxHandleAdornment") and obj.Name == "ESP_Box" then
-            obj:Destroy()
-        end
-    end
+local function updateESP()
+	for _, plr in pairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+			if not playerBoxes[plr] and playerESPOn then
+				playerBoxes[plr] = addBoxESP(plr.Character.HumanoidRootPart, Color3.fromRGB(0, 200, 255))
+			end
+		end
+	end
+
+	for _, entity in pairs(Workspace.Game.Players:GetChildren()) do
+		if ReplicatedStorage.NPCs:FindFirstChild(entity.Name) and entity:FindFirstChild("HumanoidRootPart") then
+			if not nextbotBoxes[entity] and nextbotESPOn then
+				nextbotBoxes[entity] = addBoxESP(entity.HumanoidRootPart, Color3.fromRGB(255, 0, 0))
+			end
+		end
+	end
 end
 
-local playerBoxes = false
-local botBoxes = false
+task.spawn(function()
+	while task.wait(1.5) do
+		if playerESPOn then
+			for plr, box in pairs(playerBoxes) do
+				if not plr.Character or not plr.Character:FindFirstChild("HumanoidRootPart") then
+					if box and box.Parent then box:Destroy() end
+					playerBoxes[plr] = nil
+				end
+			end
+		end
+		if nextbotESPOn then
+			for ent, box in pairs(nextbotBoxes) do
+				if not ent:FindFirstChild("HumanoidRootPart") then
+					if box and box.Parent then box:Destroy() end
+					nextbotBoxes[ent] = nil
+				end
+			end
+		end
+		updateESP()
+	end
+end)
 
 visualTab:Toggle("Player Box ESP", function(state)
-    playerBoxes = state
+	playerESPOn = state
+	if not state then
+		for _, box in pairs(playerBoxes) do if box and box.Parent then box:Destroy() end end
+		playerBoxes = {}
+	end
 end)
 
 visualTab:Toggle("Nextbot Box ESP", function(state)
-    botBoxes = state
+	nextbotESPOn = state
+	if not state then
+		for _, box in pairs(nextbotBoxes) do if box and box.Parent then box:Destroy() end end
+		nextbotBoxes = {}
+	end
 end)
 
-task.spawn(function()
-    while task.wait(0.5) do
-        clearESP()
-        if playerBoxes then
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                    createBoxESP(plr.Character, Color3.fromRGB(0, 255, 255))
-                end
-            end
-        end
+-- FullBright toggle
+miscTab:Toggle("FullBright", function(state)
+	if state then
+		Lighting.Brightness = 5
+		Lighting.ClockTime = 12
+		Lighting.FogEnd = 100000
+	else
+		Lighting.Brightness = 1
+		Lighting.ClockTime = 14
+		Lighting.FogEnd = 1000
+	end
+end)
 
-        if botBoxes then
-            for _, bot in pairs(Workspace.Game.Players:GetChildren()) do
-                if ReplicatedStorage.NPCs:FindFirstChild(bot.Name) and bot:FindFirstChild("HumanoidRootPart") then
-                    createBoxESP(bot, Color3.fromRGB(255, 0, 0))
-                end
-            end
-        end
-    end
+-- FPS Boost (one-time)
+miscTab:Button("FPS Boost", function()
+	for _, v in ipairs(game:GetDescendants()) do
+		if v:IsA("Texture") or v:IsA("Decal") then
+			v.Transparency = 1
+		elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
+			v.Enabled = false
+		end
+	end
+end)
+
+-- Anti-AFK
+miscTab:Toggle("Anti-AFK", function(state)
+	if state then
+		task.spawn(function()
+			while state do
+				for _, key in ipairs({"w","a","s","d"}) do
+					game:GetService("VirtualInputManager"):SendKeyEvent(true, key, false, game)
+					task.wait(0.1)
+					game:GetService("VirtualInputManager"):SendKeyEvent(false, key, false, game)
+				end
+				game:GetService("VirtualInputManager"):SendMouseButtonEvent(0, 0, 0, true, game, 0)
+				task.wait(0.1)
+				game:GetService("VirtualInputManager"):SendMouseButtonEvent(0, 0, 0, false, game, 0)
+				task.wait(30)
+			end
+		end)
+	end
+end)
+
+-- Server Hop Button
+miscTab:Button("Server Hop", function()
+	local function getRandomServer()
+		local servers = game:HttpGet("https://games.roblox.com/v1/games/9872472334/servers/Public?sortOrder=Asc&limit=100")
+		local data = game:GetService("HttpService"):JSONDecode(servers)
+		for _, v in pairs(data.data) do
+			if v.playing < v.maxPlayers then
+				return v.id
+			end
+		end
+	end
+	local sid = getRandomServer()
+	if sid then
+		TeleportService:TeleportToPlaceInstance(9872472334, sid, LocalPlayer)
+	end
+end)
+
+-- Player Tab: Infinite Jump
+local infiniteJumpOn = false
+playerTab:Toggle("Infinite Jump", function(state)
+	infiniteJumpOn = state
+end)
+
+UIS.JumpRequest:Connect(function()
+	if infiniteJumpOn and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+		LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+-- Speed Boost (Shift)
+local speedBoostEnabled = false
+local baseWalkSpeed = 16
+
+playerTab:Toggle("Speed Boost (Shift)", function(state)
+	speedBoostEnabled = state
+end)
+
+UIS.InputBegan:Connect(function(input, gameProcessed)
+	if input.KeyCode == Enum.KeyCode.LeftShift and speedBoostEnabled then
+		if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+			LocalPlayer.Character.Humanoid.WalkSpeed = 30
+		end
+	end
+end)
+
+UIS.InputEnded:Connect(function(input, gameProcessed)
+	if input.KeyCode == Enum.KeyCode.LeftShift and speedBoostEnabled then
+		if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+			LocalPlayer.Character.Humanoid.WalkSpeed = baseWalkSpeed
+		end
+	end
 end)
