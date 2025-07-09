@@ -1,205 +1,220 @@
--- Auto-reload on server hop
-getgenv().AutoReloadScript = "https://raw.githubusercontent.com/breakneckv099/Evade-Op-BandzHub/refs/heads/main/Evade%20Op%20Script"
-if getgenv().ScriptAlreadyLoaded then return end
-getgenv().ScriptAlreadyLoaded = true
-
--- Lib + Services
-local Lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/modern"))()
+-- Auto reload via TeleportData
 local Players = game:GetService("Players")
+local TeleportData = Players.LocalPlayer:FindFirstChild("TeleportData")
+if TeleportData and TeleportData:IsA("StringValue") then
+    loadstring(game:HttpGet(TeleportData.Value))()
+    return
+end
+
+local Lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/modern"))()
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local LocalPlayer = Players.LocalPlayer
 
--- Tabs
 local autoTab = Lib:Tab("Auto")
 local visualTab = Lib:Tab("Visual")
 local miscTab = Lib:Tab("Misc")
 
--- Sky platform
-local function createSkyPlatform()
-	local platform = Instance.new("Part")
-	platform.Size = Vector3.new(100, 1, 100)
-	platform.Anchored = true
-	platform.CanCollide = true
-	platform.Position = Vector3.new(0, 400, 0)
-	platform.Name = "SafePlatform"
-	platform.Parent = Workspace
-	return platform
-end
+-- Server Hop
+miscTab:Button("Server Hop", function()
+    local function getServer()
+        local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+        local success, result = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet(url)).data
+        end)
+        if success then
+            for _, server in ipairs(result) do
+                if server.playing < server.maxPlayers and server.id ~= game.JobId then
+                    return server.id
+                end
+            end
+        end
+        return nil
+    end
+
+    local serverId = getServer()
+    if serverId then
+        local teleportData = Instance.new("StringValue")
+        teleportData.Name = "TeleportData"
+        teleportData.Value = "https://raw.githubusercontent.com/breakneckv099/Evade-Op-BandzHub/refs/heads/main/Evade%20Op%20Script"
+        teleportData.Parent = LocalPlayer
+
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, LocalPlayer)
+    end
+end)
 
 -- FullBright
 local lighting = game:GetService("Lighting")
-local originalBrightness = lighting.Brightness
-local originalAmbient = lighting.Ambient
+local fullBrightEnabled = false
+local originalBrightness, originalAmbient, originalOutdoorAmbient = lighting.Brightness, lighting.Ambient, lighting.OutdoorAmbient
 
 miscTab:Toggle("FullBright", function(state)
-	if state then
-		lighting.Brightness = 5
-		lighting.Ambient = Color3.new(1, 1, 1)
-	else
-		lighting.Brightness = originalBrightness
-		lighting.Ambient = originalAmbient
-	end
+    fullBrightEnabled = state
+    if state then
+        lighting.Brightness = 2
+        lighting.Ambient = Color3.new(1, 1, 1)
+        lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+    else
+        lighting.Brightness = originalBrightness
+        lighting.Ambient = originalAmbient
+        lighting.OutdoorAmbient = originalOutdoorAmbient
+    end
 end)
 
 -- FPS Boost
 miscTab:Toggle("FPS Boost", function(state)
-	for _, v in ipairs(lighting:GetChildren()) do
-		if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("ColorCorrectionEffect") then
-			v.Enabled = not state
-		end
-	end
+    if state then
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            if obj:IsA("Texture") or obj:IsA("Decal") then
+                obj:Destroy()
+            elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
+                obj.Enabled = false
+            elseif obj:IsA("BasePart") and obj.Material ~= Enum.Material.SmoothPlastic then
+                obj.Material = Enum.Material.SmoothPlastic
+            end
+        end
+    end
 end)
 
 -- Anti-AFK
+local antiAFK = false
 miscTab:Toggle("Anti-AFK", function(state)
-	if state then
-		task.spawn(function()
-			while wait(30) and state do
-				for _, key in ipairs({"W", "A", "S", "D"}) do
-					game:GetService("VirtualInputManager"):SendKeyEvent(true, key, false, game)
-					wait(0.1)
-					game:GetService("VirtualInputManager"):SendKeyEvent(false, key, false, game)
-				end
-				game:GetService("VirtualInputManager"):SendMouseButtonEvent(0, 0, 0, true, game, 0)
-				wait(0.05)
-				game:GetService("VirtualInputManager"):SendMouseButtonEvent(0, 0, 0, false, game, 0)
-			end
-		end)
-	end
-end)
+    antiAFK = state
+    while antiAFK do
+        task.wait(30)
+        local virtualInput = game:GetService("VirtualInputManager")
+        virtualInput:SendKeyEvent(true, Enum.KeyCode.W, false, game)
+        task.wait(0.1)
+        virtualInput:SendKeyEvent(false, Enum.KeyCode.W, false, game)
+        virtualInput:SendKeyEvent(true, Enum.KeyCode.A, false, game)
+        task.wait(0.1)
+        virtualInput:SendKeyEvent(false, Enum.KeyCode.A, false, game)
+        virtualInput:SendKeyEvent(true, Enum.KeyCode.S, false, game)
+        task.wait(0.1)
+        virtualInput:SendKeyEvent(false, Enum.KeyCode.S, false, game)
+        virtualInput:SendKeyEvent(true, Enum.KeyCode.D, false, game)
+        task.wait(0.1)
+        virtualInput:SendKeyEvent(false, Enum.KeyCode.D, false, game)
 
--- Server Hop
-miscTab:Button("Server Hop", function()
-	getgenv().AutoReloadScript = "https://raw.githubusercontent.com/breakneckv099/Evade-Op-BandzHub/refs/heads/main/Evade%20Op%20Script"
-	local function getServer()
-		local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
-		local success, result = pcall(function()
-			return HttpService:JSONDecode(game:HttpGet(url)).data
-		end)
-		if success then
-			for _, server in ipairs(result) do
-				if server.playing < server.maxPlayers and server.id ~= game.JobId then
-					return server.id
-				end
-			end
-		end
-		return nil
-	end
-
-	local serverId = getServer()
-	if serverId then
-		TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, LocalPlayer)
-	end
+        virtualInput:SendMouseButtonEvent(500, 500, 0, true, game, 0)
+        virtualInput:SendMouseButtonEvent(500, 500, 0, false, game, 0)
+        virtualInput:SendMouseButtonEvent(500, 500, 1, true, game, 0)
+        virtualInput:SendMouseButtonEvent(500, 500, 1, false, game, 0)
+    end
 end)
 
 -- Auto Escape
 local autoEscape = false
-local escapePlatform
 local escapeCooldown = false
+local lastPlatform = nil
 local originalCFrame = nil
 
+local function createSkyPlatform()
+    if lastPlatform then lastPlatform:Destroy() end
+    local part = Instance.new("Part")
+    part.Name = "SafePlatform"
+    part.Size = Vector3.new(200, 1, 200)
+    part.Anchored = true
+    part.CanCollide = true
+    part.Position = Vector3.new(0, 400, 0)
+    part.Parent = Workspace
+    lastPlatform = part
+    return part
+end
+
 autoTab:Toggle("Auto Escape", function(state)
-	autoEscape = state
+    autoEscape = state
+    if state then
+        createSkyPlatform()
+        task.spawn(function()
+            while autoEscape do
+                task.wait(10)
+                createSkyPlatform()
+            end
+        end)
+
+        task.spawn(function()
+            while autoEscape do
+                task.wait(0.2)
+                if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then continue end
+                local charHRP = LocalPlayer.Character.HumanoidRootPart
+
+                for _, ent in pairs(Workspace.Game.Players:GetChildren()) do
+                    if ent:FindFirstChild("HumanoidRootPart") then
+                        local name = ent.Name
+                        if ReplicatedStorage.NPCs:FindFirstChild(name) then
+                            local dist = (ent.HumanoidRootPart.Position - charHRP.Position).Magnitude
+                            if dist < 15 and not escapeCooldown then
+                                escapeCooldown = true
+                                originalCFrame = charHRP.CFrame
+                                charHRP.CFrame = CFrame.new(lastPlatform.Position + Vector3.new(0, 5, 0))
+                                task.delay(5, function()
+                                    if autoEscape and originalCFrame then
+                                        charHRP.CFrame = originalCFrame
+                                    end
+                                    escapeCooldown = false
+                                end)
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
 end)
 
-task.spawn(function()
-	while true do
-		wait(10)
-		if autoEscape then
-			if not escapePlatform or not escapePlatform.Parent then
-				escapePlatform = createSkyPlatform()
-			end
-		end
-	end
-end)
-
-task.spawn(function()
-	while task.wait(0.25) do
-		if autoEscape and not escapeCooldown and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-			local char = LocalPlayer.Character
-			for _, entity in ipairs(Workspace.Game.Players:GetChildren()) do
-				if entity:FindFirstChild("HumanoidRootPart") then
-					local isNextbot = ReplicatedStorage.NPCs:FindFirstChild(entity.Name)
-					if isNextbot then
-						local dist = (entity.HumanoidRootPart.Position - char.HumanoidRootPart.Position).Magnitude
-						if dist < 15 then
-							escapeCooldown = true
-							originalCFrame = char:GetPivot()
-							char:PivotTo(CFrame.new(escapePlatform.Position + Vector3.new(0, 5, 0)))
-							task.wait(6)
-							char:PivotTo(originalCFrame)
-							escapeCooldown = false
-							break
-						end
-					end
-				end
-			end
-		end
-	end
-end)
-
--- ESP Logic
-local playerBoxESP = false
-local nextbotBoxESP = false
-local playerESPBoxes = {}
-local nextbotESPBoxes = {}
-
-local function clearBoxes(table)
-	for _, box in pairs(table) do
-		if box and box.Parent then box:Destroy() end
-	end
-	table.clear(table)
+-- ESP
+local function createBoxESP(model, color)
+    if not model:FindFirstChild("HumanoidRootPart") then return end
+    local box = Instance.new("BoxHandleAdornment")
+    box.Name = "ESP_Box"
+    box.Adornee = model.HumanoidRootPart
+    box.Size = model.HumanoidRootPart.Size + Vector3.new(1.5, 1.5, 1.5)
+    box.AlwaysOnTop = true
+    box.ZIndex = 2
+    box.Color3 = color
+    box.Transparency = 0.65
+    box.Parent = model
 end
 
-local function createBox(target, size, color)
-	local box = Instance.new("BoxHandleAdornment")
-	box.Size = size
-	box.Adornee = target
-	box.AlwaysOnTop = true
-	box.ZIndex = 1
-	box.Transparency = 0.4
-	box.Color3 = color
-	box.Name = "ESP_Box"
-	box.Parent = target
-	return box
+local function clearESP()
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("BoxHandleAdornment") and obj.Name == "ESP_Box" then
+            obj:Destroy()
+        end
+    end
 end
+
+local playerBoxes = false
+local botBoxes = false
 
 visualTab:Toggle("Player Box ESP", function(state)
-	playerBoxESP = state
-	if not state then clearBoxes(playerESPBoxes) end
+    playerBoxes = state
 end)
 
 visualTab:Toggle("Nextbot Box ESP", function(state)
-	nextbotBoxESP = state
-	if not state then clearBoxes(nextbotESPBoxes) end
+    botBoxes = state
 end)
 
 task.spawn(function()
-	while task.wait(0.5) do
-		if playerBoxESP then
-			for _, plr in pairs(Players:GetPlayers()) do
-				if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-					if not playerESPBoxes[plr] then
-						local box = createBox(plr.Character.HumanoidRootPart, Vector3.new(4, 6, 2), Color3.fromRGB(0, 200, 255))
-						playerESPBoxes[plr] = box
-					end
-				end
-			end
-		end
+    while task.wait(0.5) do
+        clearESP()
+        if playerBoxes then
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    createBoxESP(plr.Character, Color3.fromRGB(0, 255, 255))
+                end
+            end
+        end
 
-		if nextbotBoxESP then
-			for _, ent in pairs(Workspace.Game.Players:GetChildren()) do
-				if ent:FindFirstChild("HumanoidRootPart") and not nextbotESPBoxes[ent] then
-					local isNextbot = ReplicatedStorage.NPCs:FindFirstChild(ent.Name)
-					if isNextbot then
-						local box = createBox(ent.HumanoidRootPart, Vector3.new(6, 6, 3), Color3.fromRGB(255, 0, 0))
-						nextbotESPBoxes[ent] = box
-					end
-				end
-			end
-		end
-	end
+        if botBoxes then
+            for _, bot in pairs(Workspace.Game.Players:GetChildren()) do
+                if ReplicatedStorage.NPCs:FindFirstChild(bot.Name) and bot:FindFirstChild("HumanoidRootPart") then
+                    createBoxESP(bot, Color3.fromRGB(255, 0, 0))
+                end
+            end
+        end
+    end
 end)
