@@ -1,112 +1,134 @@
 local Lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/modern"))()
-local Players = game:GetService("Players")
+local Players, ReplicatedStorage, Workspace = game:GetService("Players"), game:GetService("ReplicatedStorage"), game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Lighting = game:GetService("Lighting")
-local TeleportService = game:GetService("TeleportService")
-local UserInputService = game:GetService("UserInputService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 
--- Tabs
 local autoTab = Lib:Tab("Auto")
-local visualTab = Lib:Tab("Visuals")
+local visualTab = Lib:Tab("Visual")
 local miscTab = Lib:Tab("Misc")
 local playerTab = Lib:Tab("Player")
 
--- === AUTO ESCAPE ===
-local autoEscape = false
-local escapePlatform = nil
-local escaped = false
-local originalCFrame = nil
-local lastEscapeTime = 0
-
+-- Sky Platform
+local platformPosition = Vector3.new(0, 400, 0)
 local function createSkyPlatform()
-	local part = Instance.new("Part")
-	part.Size = Vector3.new(100, 1, 100)
-	part.Anchored = true
-	part.Position = Vector3.new(0, 400, 0)
-	part.CanCollide = true
-	part.Name = "SafePlatform"
-	part.Parent = Workspace
-	return part
+	local old = Workspace:FindFirstChild("SafePlatform")
+	if old then old:Destroy() end
+	local platform = Instance.new("Part")
+	platform.Name = "SafePlatform"
+	platform.Size = Vector3.new(120, 1, 120)
+	platform.Anchored = true
+	platform.CanCollide = true
+	platform.Position = platformPosition
+	platform.Parent = Workspace
+	return platform
 end
+
+-- Auto Escape
+local autoEscape = false
+local safePlatform = nil
+local escaped, lastReturnTick = false, 0
+local escapeDistance, returnDistance = 21.5, 35
 
 autoTab:Toggle("Auto Escape", function(state)
 	autoEscape = state
-	if state then
-		if not escapePlatform or not escapePlatform:IsDescendantOf(Workspace) then
-			escapePlatform = createSkyPlatform()
-		end
-
-		task.spawn(function()
-			while autoEscape do
-				-- Refresh platform every 10s
-				if not escapePlatform or not escapePlatform:IsDescendantOf(Workspace) then
-					escapePlatform = createSkyPlatform()
-				end
-
-				for _, ent in ipairs(Workspace.Game.Players:GetChildren()) do
-					local isNextbot = ReplicatedStorage.NPCs:FindFirstChild(ent.Name)
-					local botHRP = ent:FindFirstChild("HumanoidRootPart")
-					local playerHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-
-					if isNextbot and botHRP and playerHRP then
-						local dist = (botHRP.Position - playerHRP.Position).Magnitude
-
-						if dist < 21.5 and not escaped then
-							originalCFrame = LocalPlayer.Character:GetPivot()
-							LocalPlayer.Character:PivotTo(CFrame.new(escapePlatform.Position + Vector3.new(0, 5, 0)))
-							lastEscapeTime = tick()
-							escaped = true
-						elseif dist > 35 and escaped and tick() - lastEscapeTime > 5 then
-							LocalPlayer.Character:PivotTo(originalCFrame)
-							escaped = false
-						end
-					end
-				end
-
-				task.wait(0.3)
-			end
-		end)
+	if state and not safePlatform then
+		safePlatform = createSkyPlatform()
 	end
 end)
 
--- === ESP: HIGHLIGHT FOR PLAYERS ===
-local playerESPEnabled = false
-local playerHighlights = {}
-
-local function applyHighlight(char)
-	if not char:FindFirstChild("ESP_Highlight") then
-		local hl = Instance.new("Highlight")
-		hl.Name = "ESP_Highlight"
-		hl.FillColor = Color3.fromRGB(0, 200, 255)
-		hl.OutlineColor = Color3.new(1, 1, 1)
-		hl.FillTransparency = 0.2
-		hl.OutlineTransparency = 0
-		hl.Adornee = char
-		hl.Parent = char
+task.spawn(function()
+	while task.wait(10) do
+		if autoEscape then
+			safePlatform = createSkyPlatform()
+		end
 	end
+end)
+
+task.spawn(function()
+	local originalCFrame
+	while task.wait(0.25) do
+		if not autoEscape then continue end
+		local char = LocalPlayer.Character
+		if not char or not char:FindFirstChild("HumanoidRootPart") then continue end
+		if char:FindFirstChild("Revives") then continue end
+
+		local root = char.HumanoidRootPart
+		local closest = math.huge
+		for _, bot in ipairs(Workspace.Game.Players:GetChildren()) do
+			if bot ~= char and bot:FindFirstChild("HumanoidRootPart") then
+				if ReplicatedStorage.NPCs:FindFirstChild(bot.Name) then
+					local dist = (root.Position - bot.HumanoidRootPart.Position).Magnitude
+					if dist < closest then
+						closest = dist
+					end
+				end
+			end
+		end
+
+		if closest < escapeDistance and not escaped then
+			originalCFrame = root.CFrame
+			char:PivotTo(CFrame.new(safePlatform.Position + Vector3.new(0, 5, 0)))
+			escaped = true
+			lastReturnTick = tick()
+		elseif escaped and closest > returnDistance and (tick() - lastReturnTick) >= 5 then
+			if originalCFrame then
+				char:PivotTo(originalCFrame)
+			end
+			escaped = false
+		end
+	end
+end)
+
+-- ESP Utils
+local function highlightPlayer(char)
+	local existing = char:FindFirstChild("PlayerESP")
+	if existing then existing:Destroy() end
+	local hl = Instance.new("Highlight")
+	hl.Name = "PlayerESP"
+	hl.FillColor = Color3.fromRGB(0, 200, 255)
+	hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+	hl.FillTransparency = 0.4
+	hl.OutlineTransparency = 0
+	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	hl.Parent = char
 end
+
+local function addNextbotBox(part)
+	local existing = part:FindFirstChild("BotESPBox")
+	if existing then existing:Destroy() end
+	local box = Instance.new("BoxHandleAdornment")
+	box.Name = "BotESPBox"
+	box.Size = Vector3.new(4.5, 6.5, 2.5)
+	box.Adornee = part
+	box.AlwaysOnTop = true
+	box.ZIndex = 1
+	box.Color3 = Color3.fromRGB(255, 0, 0)
+	box.Transparency = 0.5
+	box.Parent = part
+end
+
+local playerESPEnabled, nextbotESPEnabled = false, false
 
 visualTab:Toggle("Player ESP (Chams)", function(state)
 	playerESPEnabled = state
 end)
 
--- Constant refresh every 13s
+visualTab:Toggle("Nextbot ESP (Boxes)", function(state)
+	nextbotESPEnabled = state
+end)
+
 task.spawn(function()
 	while true do
 		if playerESPEnabled then
-			for _, plr in pairs(Players:GetPlayers()) do
+			for _, plr in ipairs(Players:GetPlayers()) do
 				if plr ~= LocalPlayer and plr.Character then
-					local char = plr.Character
-					local reviveFolder = Workspace.Game.Players:FindFirstChild(plr.Name)
-					if reviveFolder then
-						if reviveFolder:FindFirstChild("Revives") or char:FindFirstChild("Revives") then
-							-- downed
-						end
-					end
-					applyHighlight(char)
+					highlightPlayer(plr.Character)
+				end
+			end
+		end
+		if nextbotESPEnabled then
+			for _, ent in ipairs(Workspace.Game.Players:GetChildren()) do
+				if ent:FindFirstChild("HumanoidRootPart") and ReplicatedStorage.NPCs:FindFirstChild(ent.Name) then
+					addNextbotBox(ent.HumanoidRootPart)
 				end
 			end
 		end
@@ -114,117 +136,79 @@ task.spawn(function()
 	end
 end)
 
--- === ESP: NEXTBOT BOXES ===
-local nextbotESPEnabled = false
-
-local function addNextbotBox(part)
-	if part:FindFirstChild("Nextbot_Box") then return end
-	local box = Instance.new("BoxHandleAdornment")
-	box.Name = "Nextbot_Box"
-	box.Adornee = part
-	box.Size = part.Size + Vector3.new(2, 2, 2)
-	box.Color3 = Color3.fromRGB(255, 0, 0)
-	box.AlwaysOnTop = true
-	box.Transparency = 0.5
-	box.ZIndex = 1
-	box.Parent = part
-end
-
-visualTab:Toggle("Nextbot Box ESP", function(state)
-	nextbotESPEnabled = state
-end)
-
--- ESP for nextbots with 1500 stud range
-task.spawn(function()
-	while true do
-		if nextbotESPEnabled then
-			for _, bot in pairs(Workspace.Game.Players:GetChildren()) do
-				local isBot = ReplicatedStorage.NPCs:FindFirstChild(bot.Name)
-				local hrp = bot:FindFirstChild("HumanoidRootPart")
-				if isBot and hrp and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-					local dist = (hrp.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
-					if dist < 1500 then
-						addNextbotBox(hrp)
-					end
-				end
-			end
-		end
-		task.wait(1)
-	end
-end)
-
--- === FULLBRIGHT ===
-local fullBright = false
-
+-- Fullbright
+local fullBrightOn = false
+local lighting = game:GetService("Lighting")
 miscTab:Toggle("Fullbright", function(state)
-	fullBright = state
-	if state then
-		task.spawn(function()
-			while fullBright do
-				Lighting.Brightness = 2
-				Lighting.ClockTime = 12
-				Lighting.FogEnd = 100000
-				Lighting.GlobalShadows = false
-				task.wait(2)
-			end
-		end)
+	fullBrightOn = state
+end)
+
+task.spawn(function()
+	while task.wait(1) do
+		if fullBrightOn then
+			lighting.Brightness = 3
+			lighting.ClockTime = 14
+			lighting.FogEnd = 100000
+			lighting.GlobalShadows = false
+		end
 	end
 end)
 
--- === FPS BOOST ===
+-- FPS Boost
 miscTab:Button("FPS Boost", function()
-	for _, obj in pairs(game:GetDescendants()) do
-		if obj:IsA("Texture") or obj:IsA("Decal") then
-			obj.Transparency = 1
-		elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
-			obj.Enabled = false
-		end
+	for _, v in ipairs(game:GetDescendants()) do
+		if v:IsA("Texture") or v:IsA("Decal") then v:Destroy() end
+		if v:IsA("ParticleEmitter") or v:IsA("Trail") then v:Destroy() end
 	end
+	lighting.FogEnd = 100000
+	lighting.GlobalShadows = false
+	lighting.Brightness = 2
+	settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
 end)
 
--- === ANTI-AFK ===
-local antiAFK = false
-
-miscTab:Toggle("Anti-AFK", function(state)
-	antiAFK = state
-	if state then
-		task.spawn(function()
-			while antiAFK do
-				for _, key in ipairs({"W", "A", "S", "D"}) do
-					VirtualInputManager:SendKeyEvent(true, key, false, game)
-					wait(0.1)
-					VirtualInputManager:SendKeyEvent(false, key, false, game)
-				end
-				mouse1click()
-				mouse2click()
-				wait(30)
-			end
-		end)
-	end
-end)
-
--- === INFINITE JUMP ===
+-- Infinite Jump
+local infJump = false
 playerTab:Toggle("Infinite Jump", function(state)
-	UserInputService.JumpRequest:Connect(function()
-		if state and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-			LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
-		end
-	end)
+	infJump = state
 end)
 
--- === SERVER HOP ===
-miscTab:Button("Server Hop", function()
-	local HttpService = game:GetService("HttpService")
-	local function getServer()
-		local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100")).data
-		for _, server in ipairs(servers) do
-			if server.playing < server.maxPlayers and server.id ~= game.JobId then
-				return server.id
+game:GetService("UserInputService").JumpRequest:Connect(function()
+	if infJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+		LocalPlayer.Character:FindFirstChild("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+-- Anti AFK
+local antiAFK = false
+miscTab:Toggle("Anti AFK", function(state)
+	antiAFK = state
+end)
+
+task.spawn(function()
+	while task.wait(60) do
+		if antiAFK then
+			for _, key in ipairs({"W", "A", "S", "D"}) do
+				keypress(Enum.KeyCode[key])
+				wait(0.1)
+				keyrelease(Enum.KeyCode[key])
 			end
+			mouse1click()
+			mouse2click()
 		end
 	end
-	local sid = getServer()
-	if sid then
-		TeleportService:TeleportToPlaceInstance(game.PlaceId, sid, LocalPlayer)
+end)
+
+-- Server Hop
+miscTab:Button("Server Hop", function()
+	local tp = game:GetService("TeleportService")
+	local placeId = game.PlaceId
+	local servers = game:GetService("HttpService"):JSONDecode(
+		game:HttpGet("https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?limit=100")
+	)
+	for _, s in pairs(servers.data) do
+		if s.playing < s.maxPlayers then
+			tp:TeleportToPlaceInstance(placeId, s.id, LocalPlayer)
+			break
+		end
 	end
 end)
